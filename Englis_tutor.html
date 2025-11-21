@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aria - Live Video Tutor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* Dark background for video call vibe */
+            height: 100vh;
+            overflow: hidden;
+            color: white;
+        }
+
+        /* --- Main Avatar (The "Remote" Video) --- */
+        .remote-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+            background: radial-gradient(circle at center, #1f2937 0%, #111827 100%);
+        }
+
+        .avatar-circle {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1, #a855f7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 60px rgba(99, 102, 241, 0.3);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .avatar-img { font-size: 5rem; color: white; }
+
+        /* Speaking Pulse */
+        .speaking .avatar-circle {
+            animation: pulse-speak 1.5s infinite ease-in-out;
+        }
+        
+        @keyframes pulse-speak {
+            0% { transform: scale(1); box-shadow: 0 0 30px rgba(168, 85, 247, 0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 0 80px rgba(168, 85, 247, 0.8); }
+            100% { transform: scale(1); box-shadow: 0 0 30px rgba(168, 85, 247, 0.4); }
+        }
+
+        /* Listening Glow */
+        .listening .avatar-circle {
+            border: 4px solid #22c55e;
+            box-shadow: 0 0 50px rgba(34, 197, 94, 0.4);
+        }
+
+        /* --- User Video (PIP) --- */
+        .local-video-container {
+            position: absolute;
+            bottom: 100px;
+            right: 20px;
+            width: 160px;
+            height: 213px; /* 3:4 aspect roughly */
+            background-color: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 10;
+            border: 2px solid #374151;
+            transition: transform 0.3s;
+        }
+
+        .local-video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+
+        /* --- Controls Bar --- */
+        .controls-bar {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 20;
+            background: rgba(31, 41, 55, 0.8);
+            padding: 12px 24px;
+            border-radius: 999px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .ctrl-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #374151;
+            color: white;
+            border: none;
+        }
+
+        .ctrl-btn:hover { background: #4b5563; }
+        .ctrl-btn.active { background: white; color: #1f2937; }
+        .ctrl-btn.danger { background: #ef4444; color: white; }
+        .ctrl-btn.danger:hover { background: #dc2626; }
+
+        /* --- Captions / Subtitles --- */
+        .captions-container {
+            position: absolute;
+            bottom: 160px; /* Above local video */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 700px;
+            text-align: center;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .caption-text {
+            display: inline-block;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            line-height: 1.4;
+            backdrop-filter: blur(4px);
+            margin-top: 8px;
+            opacity: 0;
+            animation: fadeUp 0.3s forwards;
+        }
+
+        .caption-correction {
+            color: #fca5a5; /* Light Red */
+            font-weight: bold;
+            display: block;
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- Start Screen Overlay --- */
+        #startScreen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #111827;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Start Screen -->
+    <div id="startScreen">
+        <div class="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mb-6 shadow-lg">
+            <i class="fas fa-video text-4xl text-white"></i>
+        </div>
+        <h1 class="text-3xl font-bold mb-2">Aria Video Tutor</h1>
+        <p class="text-gray-400 mb-8 max-w-md px-4">Practice English in a real-time video call environment. Please allow camera and microphone access.</p>
+        <button id="joinBtn" class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-full font-semibold text-lg transition shadow-lg flex items-center gap-2">
+            <i class="fas fa-phone"></i> Start Call
+        </button>
+    </div>
+
+    <!-- Main "Remote" View (Aria) -->
+    <div id="remoteView" class="remote-container">
+        <div id="avatarWrapper" class="avatar-circle mb-6">
+            <i class="fas fa-headset avatar-img"></i>
+        </div>
+        <div class="text-gray-400 font-medium tracking-wide" id="statusText">Connecting...</div>
+    </div>
+
+    <!-- Subtitles/Captions -->
+    <div id="captions" class="captions-container"></div>
+
+    <!-- Local "Self" View (PIP) -->
+    <div class="local-video-container">
+        <video id="localVideo" autoplay muted playsinline></video>
+    </div>
+
+    <!-- Control Bar -->
+    <div class="controls-bar">
+        <button id="micToggle" class="ctrl-btn active" title="Toggle Microphone">
+            <i class="fas fa-microphone"></i>
+        </button>
+        <button id="camToggle" class="ctrl-btn active" title="Toggle Camera">
+            <i class="fas fa-video"></i>
+        </button>
+        <button id="endCallBtn" class="ctrl-btn danger" title="End Call">
+            <i class="fas fa-phone-slash"></i>
+        </button>
+    </div>
+
+    <script type="module">
+        // --- Configuration ---
+        const apiKey = ""; // Injected by environment
+        const SYSTEM_PROMPT = `
+        You are Aria, a friendly English tutor on a video call.
+        1. Keep responses very short and conversational (1-2 sentences).
+        2. Correct mistakes gently at the end of your turn using "Correction: [text]".
+        3. Be encouraging and energetic.
+        4. Do not use emojis in text output (since it's spoken).
+        `;
+
+        // --- DOM Elements ---
+        const startScreen = document.getElementById('startScreen');
+        const joinBtn = document.getElementById('joinBtn');
+        const localVideo = document.getElementById('localVideo');
+        const avatarWrapper = document.getElementById('avatarWrapper');
+        const statusText = document.getElementById('statusText');
+        const captionsContainer = document.getElementById('captions');
+        
+        // Controls
+        const micToggle = document.getElementById('micToggle');
+        const camToggle = document.getElementById('camToggle');
+        const endCallBtn = document.getElementById('endCallBtn');
+
+        // --- State ---
+        let localStream = null;
+        let recognition;
+        let synthesis = window.speechSynthesis;
+        let isListening = false;
+        let chatHistory = [
+            { role: "user", parts: [{ text: SYSTEM_PROMPT }] }
+        ];
+
+        // --- Initialization ---
+
+        joinBtn.addEventListener('click', async () => {
+            try {
+                // 1. Get User Media
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+                
+                // 2. UI Transition
+                startScreen.style.opacity = '0';
+                setTimeout(() => startScreen.style.display = 'none', 500);
+                
+                // 3. Start AI
+                statusText.innerText = "Aria is listening...";
+                initSpeech();
+                
+                // 4. Initial Greeting
+                setTimeout(() => {
+                    handleAIResponse("Hello! I can see you now. Ready to practice English?");
+                }, 1000);
+
+            } catch (err) {
+                alert("Could not access Camera/Microphone: " + err.message);
+            }
+        });
+
+        // --- Speech Recognition (STT) ---
+        function initSpeech() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                showCaption("Browser not supported for Speech.", 'ai');
+                return;
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                avatarWrapper.classList.add('listening');
+                statusText.innerText = "Listening...";
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                avatarWrapper.classList.remove('listening');
+                // If not speaking, restart listening (Simulate continuous call)
+                if (!synthesis.speaking && document.visibilityState === 'visible') {
+                   try { recognition.start(); } catch(e){} 
+                }
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                if (transcript.trim().length > 0) {
+                    handleUserMessage(transcript);
+                }
+            };
+            
+            // Start immediately
+            try { recognition.start(); } catch(e){}
+        }
+
+        // --- Core Logic ---
+
+        async function handleUserMessage(text) {
+            showCaption(text, 'user');
+            statusText.innerText = "Thinking...";
+            
+            chatHistory.push({ role: "user", parts: [{ text: text }] });
+
+            try {
+                const responseText = await getGeminiResponse(chatHistory);
+                chatHistory.push({ role: "model", parts: [{ text: responseText }] });
+                handleAIResponse(responseText);
+            } catch (error) {
+                console.error(error);
+                handleAIResponse("Sorry, I lost connection for a second.");
+            }
+        }
+
+        function handleAIResponse(text) {
+            // Split correction if present
+            let spokenText = text;
+            let displayHTML = text;
+
+            if (text.includes("Correction:")) {
+                const parts = text.split("Correction:");
+                spokenText = parts[0]; // Only speak the main part mostly
+                displayHTML = `${parts[0]}<div class="caption-correction"><i class="fas fa-pen"></i> ${parts[1]}</div>`;
+            }
+
+            showCaption(displayHTML, 'ai', true); // true = allowHTML
+            speak(text); // Speak full text including correction for learning
+        }
+
+        async function getGeminiResponse(history) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: history.slice(1),
+                systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || "I didn't catch that.";
+        }
+
+        // --- TTS Logic ---
+        function speak(text) {
+            if (synthesis.speaking) synthesis.cancel();
+
+            const cleanText = text.replace(/[*]/g, '');
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            
+            // Voice Selection
+            const voices = synthesis.getVoices();
+            const voice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Samantha'));
+            if (voice) utterance.voice = voice;
+            
+            utterance.rate = 1.0;
+
+            utterance.onstart = () => {
+                avatarWrapper.classList.add('speaking');
+                statusText.innerText = "Aria Speaking...";
+                // Stop listening while speaking to avoid hearing self
+                if(isListening) recognition.stop();
+            };
+
+            utterance.onend = () => {
+                avatarWrapper.classList.remove('speaking');
+                statusText.innerText = "Listening...";
+                // Resume listening
+                try { recognition.start(); } catch(e){}
+            };
+
+            synthesis.speak(utterance);
+        }
+
+        // --- UI Helper: Captions ---
+        function showCaption(text, type, isHTML = false) {
+            const el = document.createElement('div');
+            el.className = 'caption-text';
+            if (type === 'user') {
+                el.style.background = 'rgba(0,0,0,0.4)';
+                el.style.border = '1px solid rgba(255,255,255,0.2)';
+                el.innerText = `You: ${text}`;
+            } else {
+                // AI
+                if(isHTML) el.innerHTML = text;
+                else el.innerText = text;
+            }
+            
+            // Clear old captions occasionally or just append? 
+            // For video call feel, usually only last 1-2 messages are shown
+            captionsContainer.innerHTML = ''; 
+            captionsContainer.appendChild(el);
+        }
+
+        // --- Controls ---
+        
+        micToggle.addEventListener('click', () => {
+            const enabled = localStream.getAudioTracks()[0].enabled;
+            if (enabled) {
+                localStream.getAudioTracks()[0].enabled = false;
+                micToggle.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+                micToggle.classList.remove('active');
+                micToggle.classList.add('danger');
+            } else {
+                localStream.getAudioTracks()[0].enabled = true;
+                micToggle.innerHTML = '<i class="fas fa-microphone"></i>';
+                micToggle.classList.add('active');
+                micToggle.classList.remove('danger');
+            }
+        });
+
+        camToggle.addEventListener('click', () => {
+            const enabled = localStream.getVideoTracks()[0].enabled;
+            if (enabled) {
+                localStream.getVideoTracks()[0].enabled = false;
+                camToggle.innerHTML = '<i class="fas fa-video-slash"></i>';
+                camToggle.classList.remove('active');
+                camToggle.classList.add('danger');
+            } else {
+                localStream.getVideoTracks()[0].enabled = true;
+                camToggle.innerHTML = '<i class="fas fa-video"></i>';
+                camToggle.classList.add('active');
+                camToggle.classList.remove('danger');
+            }
+        });
+
+        endCallBtn.addEventListener('click', () => {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            synthesis.cancel();
+            location.reload(); // Simple reset
+        });
+
+        // Load voices
+        window.speechSynthesis.onvoiceschanged = () => {};
+
+    </script>
+</body>
+</html>
